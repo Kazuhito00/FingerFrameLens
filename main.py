@@ -133,9 +133,16 @@ def main():
                 continue
 
             # 検出結果可視化 ###################################################
-            risize_ratio = 0.1
             x1, y1 = int(bbox[1] * frame_width), int(bbox[0] * frame_height)
             x2, y2 = int(bbox[3] * frame_width), int(bbox[2] * frame_height)
+
+            risize_ratio = 0.2
+            bbox_width = x2 - x1
+            bbox_height = y2 - y1
+            x1 = x1 + int(bbox_width * risize_ratio)
+            y1 = y1 + int(bbox_height * risize_ratio)
+            x2 = x2 - int(bbox_width * risize_ratio)
+            y2 = y2 - int(bbox_height * risize_ratio)
 
             cv.putText(debug_image, '{:.3f}'.format(score), (x1, y1 - 15),
                        cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
