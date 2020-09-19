@@ -3,6 +3,7 @@
 FingerFrame検出を行った結果に対し、画像クラス分類を行うデモです。<br>
 * FingerFrame検出：EfficientDet D0<br>
 * 画像クラス分類：EfficientNet B0<br>
+![dfok1-uqm77](https://user-images.githubusercontent.com/37477845/93661903-887aa980-fa96-11ea-83e4-0912271fc3fa.gif)
 
 # Requirement 
 * Tensorflow 2.3.0 or later
