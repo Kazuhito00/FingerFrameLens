@@ -22,6 +22,7 @@ python main.py
 * --fps<br>処理FPS (デフォルト：10.1) ※推論時間がFPSを下回る場合のみ有効
 
 # Reference
+FingerFrameの検出には以下の学習済モデルを使用しています。
 [Kazuhito00/FingerFrameDetection-TF2](https://github.com/Kazuhito00/FingerFrameDetection-TF2)
 
 # Author
