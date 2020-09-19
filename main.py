@@ -38,25 +38,27 @@ def get_args():
 
     parser.add_argument("--model", default='model/EfficientDetD0/saved_model')
     parser.add_argument("--score_th", type=float, default=0.7)
+    parser.add_argument("--smaller_ratio", type=float, default=0.22)
 
     args = parser.parse_args()
 
     return args
 
 
-def run_inference_single_image(image, inference_func):
+def run_od_inference(inference_func, image):
     """
     [summary]
         物体検出推論(1枚)
     Parameters
     ----------
-    image : image
-        推論対象の画像
     inference_func : func
         推論用関数
+    image : image
+        推論対象の画像
     None
     """
-
+    image = image[:, :, [2, 1, 0]]  # BGR2RGB
+    image = np.expand_dims(image, axis=0)
     tensor = tf.convert_to_tensor(image)
     output = inference_func(tensor)
 
@@ -65,6 +67,77 @@ def run_inference_single_image(image, inference_func):
     output['detection_boxes'] = output['detection_boxes'][0].numpy()
     output['detection_scores'] = output['detection_scores'][0].numpy()
     return output
+
+
+def calc_od_bbox(detection_result, score_th, smaller_ratio, frame_width,
+                 frame_height):
+    """
+    [summary]
+        物体検出結果からバウンディングボックスを算出
+    Parameters
+    ----------
+    detection_result : dict
+        物体検出結果
+    score_th : float
+        物体検出スコア閾値
+    smaller_ratio : float
+        縮小割合
+    frame_width : int
+        画像幅
+    frame_height : int
+        画像高さ
+    None
+    """
+    x1, y1, x2, y2 = None, None, None, None
+
+    num_detections = detection_result['num_detections']
+    for i in range(num_detections):
+        score = detection_result['detection_scores'][i]
+        bbox = detection_result['detection_boxes'][i]
+
+        if score < score_th:
+            continue
+
+        # 検出結果可視化 ###################################################
+        x1, y1 = int(bbox[1] * frame_width), int(bbox[0] * frame_height)
+        x2, y2 = int(bbox[3] * frame_width), int(bbox[2] * frame_height)
+
+        risize_ratio = smaller_ratio
+        bbox_width = x2 - x1
+        bbox_height = y2 - y1
+        x1 = x1 + int(bbox_width * risize_ratio)
+        y1 = y1 + int(bbox_height * risize_ratio)
+        x2 = x2 - int(bbox_width * risize_ratio)
+        y2 = y2 - int(bbox_height * risize_ratio)
+
+        break  # 有効なバウンディングボックスの1つ目を利用
+
+    return x1, y1, x2, y2
+
+
+def run_classify(model, image):
+    """
+    [summary]
+        画像クラス分類
+    Parameters
+    ----------
+    model : model
+        クラス分類用モデル
+    image : image
+        推論対象の画像
+    None
+    """
+    inp = cv.resize(image, (224, 224))
+    inp = inp[:, :, [2, 1, 0]]  # BGR2RGB
+    inp = np.expand_dims(inp, axis=0)
+    tensor = tf.convert_to_tensor(inp)
+    classifications = model.predict(tensor)
+    classifications = tf.keras.applications.imagenet_utils.decode_predictions(
+        classifications,
+        top=5,
+    )
+    classifications = np.squeeze(classifications)
+    return classifications
 
 
 def main():
@@ -84,6 +157,12 @@ def main():
 
     model_path = args.model
     score_th = args.score_th
+    smaller_ratio = args.smaller_ratio
+
+    # GUI準備 #################################################################
+    app_gui = AppGui(window_name='FingerFrameLens')
+    # 初期設定
+    app_gui.set_score_threshold(score_th)
 
     # カメラ準備 ###############################################################
     cap = cv.VideoCapture(cap_device)
@@ -91,18 +170,26 @@ def main():
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
 
     # モデルロード #############################################################
+    # EfficientDet-D0
     DEFAULT_FUNCTION_KEY = 'serving_default'
-    loaded_model = tf.saved_model.load(model_path)
-    inference_func = loaded_model.signatures[DEFAULT_FUNCTION_KEY]
+    effdet_model = tf.saved_model.load(model_path)
+    inference_func = effdet_model.signatures[DEFAULT_FUNCTION_KEY]
 
-    # GUI準備 #################################################################
-    app_gui = AppGui(window_name='FingerFrameLens')
-
-    # 初期設定
-    app_gui.set_score_threshold(score_th)
+    # EfficientNet-B0
+    effnet_model = tf.keras.applications.EfficientNetB0(
+        include_top=True,
+        weights='imagenet',
+        input_shape=(224, 224, 3),
+    )
+    tensor = tf.convert_to_tensor(np.zeros((224, 224, 3), np.uint8))
+    effnet_model.predict(tensor)
+    effnet_model.make_predict_function()
 
     # FPS計測準備 ##############################################################
     cvFpsCalc = CvFpsCalc(buffer_len=3)
+
+    cropping_image = None
+    classifications = None
 
     while True:
         start_time = time.time()
@@ -117,43 +204,34 @@ def main():
         frame_width, frame_height = frame.shape[1], frame.shape[0]
         debug_image = copy.deepcopy(frame)
 
-        # 検出実施 #############################################################
-        frame = frame[:, :, [2, 1, 0]]  # BGR2RGB
-        image_np_expanded = np.expand_dims(frame, axis=0)
+        # 物体検出実施 #########################################################
+        detections = run_od_inference(inference_func, frame)
+        x1, y1, x2, y2 = calc_od_bbox(
+            detections,
+            score_th,
+            smaller_ratio,
+            frame_width,
+            frame_height,
+        )
 
-        output = run_inference_single_image(image_np_expanded, inference_func)
+        # cv.putText(debug_image, '{:.3f}'.format(score), (x1, y1 - 10),
+        #            cv.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2,
+        #            cv.LINE_AA)
+        # cv.rectangle(debug_image, (x1, y1), (x2, y2), (255, 255, 255), 2)
 
-        num_detections = output['num_detections']
-        for i in range(num_detections):
-            score = output['detection_scores'][i]
-            bbox = output['detection_boxes'][i]
-            # class_id = output['detection_classes'][i].astype(np.int)
-
-            if score < score_th:
-                continue
-
-            # 検出結果可視化 ###################################################
-            x1, y1 = int(bbox[1] * frame_width), int(bbox[0] * frame_height)
-            x2, y2 = int(bbox[3] * frame_width), int(bbox[2] * frame_height)
-
-            risize_ratio = 0.2
-            bbox_width = x2 - x1
-            bbox_height = y2 - y1
-            x1 = x1 + int(bbox_width * risize_ratio)
-            y1 = y1 + int(bbox_height * risize_ratio)
-            x2 = x2 - int(bbox_width * risize_ratio)
-            y2 = y2 - int(bbox_height * risize_ratio)
-
-            cv.putText(debug_image, '{:.3f}'.format(score), (x1, y1 - 15),
-                       cv.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2,
-                       cv.LINE_AA)
-            cv.rectangle(debug_image, (x1, y1), (x2, y2), (255, 255, 255), 2)
+        # クラス分類実施 #######################################################
+        if x1 is not None and y1 is not None and \
+           x2 is not None and y2 is not None:
+            cropping_image = copy.deepcopy(frame[y1:y2, x1:x2])
+            classifications = run_classify(effnet_model, cropping_image)
 
         # GUI描画更新 ##########################################################
         fps_result = cvFpsCalc.get()
         app_gui.update(
             fps_result,
             debug_image,
+            cropping_image,
+            classifications,
         )
         app_gui.show()
 
