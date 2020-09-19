@@ -3,6 +3,7 @@
 This is a demo that classifies images based on the results of FingerFrame detection.<br>
 * FingerFrame Detection：EfficientDet D0<br>
 * Image Classification：EfficientNet B0<br>
+![dfok1-uqm77](https://user-images.githubusercontent.com/37477845/93661903-887aa980-fa96-11ea-83e4-0912271fc3fa.gif)
 
 # Requirement 
 * Tensorflow 2.3.0 or later
