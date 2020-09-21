@@ -131,8 +131,11 @@ def run_classify(model, image):
     inp = inp[:, :, [2, 1, 0]]  # BGR2RGB
     inp = np.expand_dims(inp, axis=0)
     tensor = tf.convert_to_tensor(inp)
+    tensor = tf.keras.applications.efficientnet.preprocess_input(tensor)
+
     classifications = model.predict(tensor)
-    classifications = tf.keras.applications.imagenet_utils.decode_predictions(
+
+    classifications = tf.keras.applications.efficientnet.decode_predictions(
         classifications,
         top=5,
     )
