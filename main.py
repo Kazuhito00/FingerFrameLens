@@ -184,7 +184,7 @@ def main():
         weights='imagenet',
         input_shape=(224, 224, 3),
     )
-    tensor = tf.convert_to_tensor(np.zeros((224, 224, 3), np.uint8))
+    tensor = tf.convert_to_tensor(np.zeros((1, 224, 224, 3), np.uint8))
     effnet_model.predict(tensor)
     effnet_model.make_predict_function()
 
